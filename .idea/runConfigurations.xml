@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="RunManager">
+    <configuration name="IconMix" type="Application" factoryName="Application" temporary="false">
+      <option name="MAIN_CLASS_NAME" value="iconmix.Main" />
+      <module name="IconMix" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+      <method v="2">
+        <option name="Make" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="IconMix (CLI sample)" type="Application" factoryName="Application" temporary="false">
+      <option name="MAIN_CLASS_NAME" value="iconmix.Main" />
+      <module name="IconMix" />
+      <option name="PROGRAM_PARAMETERS" value="--export-only &quot;$PROJECT_DIR$/samples/forGame&quot;" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+      <method v="2">
+        <option name="Make" enabled="true" />
+      </method>
+    </configuration>
+  </component>
+</project>

@@ -1,0 +1,18 @@
+# 编译产物与临时文件
+out/
+out-test/
+build/
+classes/
+*.class
+*.jar
+
+# 验收脚本的中间产物
+gui-smoke.png
+build-errors.txt
+sources.txt
+
+# IDE 临时文件（保留 .idea 下的共享配置）
+.idea/workspace.xml
+.idea/shelf/
+.idea/httpRequests/
+*.iml.bak
