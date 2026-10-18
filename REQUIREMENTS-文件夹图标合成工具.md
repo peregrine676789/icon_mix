@@ -1,7 +1,7 @@
 # 项目需求说明书
 
 **项目名称（暂定）**：IconMix —— 文件夹图标合成工具
-**文档版本**：v1.8（完整版，含空占位补齐与空位换位）
+**文档版本**：v1.9（完整版，含打包分发形态）
 **状态**：已完成首轮需求定义，可直接指导实现
 **定位**：轻量级 Windows 桌面工具
 **依据**：`HANDOVER-文件夹图标工具.md`（实测结论）+ 后续补充需求
@@ -504,9 +504,33 @@ LayoutState {
 |---|---|
 | IDEA 工程 | `IconMix.iml` + `.idea/`（模块、SDK、编码配置），打开目录即可运行 |
 | 主程序 | `src/main/java/iconmix/**`，入口 `iconmix.Main` |
-| 启动脚本 | 命令行方式见 `README.md`（无需 `.bat`；如需可后补） |
-| 自检脚本 | `verify/Harness.java`（24 项验收）、`verify/GuiSmoke.java`（GUI 离屏冒烟） |
+| 自检脚本 | `verify/Harness.java`（37 项验收）、`verify/SlotProbe.java`（槽位模型）、`verify/GuiSmoke.java`（GUI 离屏冒烟）及若干 `Diag*.java` 诊断器 |
+| 应用图标 | `assets/icon.ico`（由 `tools/MakeAppIcon.java` 生成，多尺寸） |
+| 打包脚本 | `pack.ps1`（编译 → jar → jpackage，纯 ASCII） |
 | 使用说明 | `README.md` |
+
+### 6.6 分发形态：独立应用（jpackage，已实现）
+
+**约束决定方案**：本机无 Maven/Gradle、不能联网，因此只能用 JDK 自带的 `jpackage` + `jlink`，
+不引入任何构建工具、不下载任何依赖。
+
+| 产物 | 说明 | 体积 |
+|---|---|---|
+| `dist\IconMix\IconMix.exe` | 图形版 app-image，无控制台，双击启动 | 约 74 MB |
+| `dist\IconMixCLI\IconMixCLI.exe` | 命令行版 app-image，带控制台 | 约 74 MB |
+| `dist\IconMix-1.0.0.exe` | 安装包（需 WiX Toolset v3，本机未装时为可选） | — |
+
+产物自带裁剪后的 JRE，目标机器**无需安装 JDK**；整个 `dist\IconMix` 目录可压缩分发。
+
+关键决策：
+
+1. **限定运行时模块**：`--add-modules java.base,java.desktop`。jpackage 默认会塞入
+   `jdk.jshell` / `jdk.jconsole` / `java.sql` 等无关模块，体积约 123 MB；限定后约 74 MB，
+   传递依赖由 jlink 自动补齐。日后新增能力（`java.logging`、`java.net.http` 等）需同步补模块（见 T-27）。
+2. **同时产出图形版与控制台版**：无控制台启动器双击不弹黑框，但从命令行运行看不到任何输出；
+   因此 CLI 模式单独给一个 `--win-console` 版本（见 T-28）。
+3. **两种 exe 共用同一个 `iconmix.Main`**，按有无参数分流，不增加维护成本。
+
 
 ---
 
@@ -764,6 +788,10 @@ LayoutState {
 | T-24 | **UTF-16LE 扫描误吃中文**：早期实现把「高位字节 ≠ 0」当作噪声丢弃，中文路径被啃成 `??????`，导致 `完美世界竞技平台.exe` 永远取不到图标 | UTF-16LE 分段只按 NUL 与控制字符判断，绝不依据高位字节；调试中文路径时用码点（`U+XXXX`）输出以绕开控制台编码干扰 |
 | T-25 | **槽位与图标的关系搞反会导致「怎么改都自相矛盾」**：早期用「压缩数组 + 按位置重新编号」模型，槽位只存图标下标。任何交换后重建编号都会把空位推回末尾（`i < tiles.size() ? i : -1`），表现为「图标拖到空位后跑到了别的位置」，且改哪一处都不对 | 把**槽位定为权威数据**（`Slot` 直接持有 `Tile` 或 null），`tiles` 降级为「按槽位顺序收集」的派生视图；交换就是两个槽位内容互换，不需要任何重新编号。空位是**位置**，不是列表尾部 |
 | T-26 | 用「测试替代调试」的教训：本轮的槽位 bug 靠**加临时 trace**（`-Diconmix.trace=true` 打印 slots 快照）才定位；反复"看代码推断"三次都推错 | 状态机类 bug 优先打印内部状态快照，再据此改代码 |
+| T-27 | **jpackage 默认运行时模块集过大**：未限定 `--add-modules` 时会把 `jdk.jshell`、`jdk.jconsole`、`java.sql`、`jdk.javadoc` 等无关模块全部打包，体积 123 MB | 用 `--add-modules java.base,java.desktop` 限定到实际需要的模块，体积降至约 74 MB；jlink 自动补齐传递依赖。新增能力后需同步补模块，否则运行期 `NoClassDefFoundError` |
+| T-28 | **无控制台启动器看不到命令行输出**：`jpackage --type app-image` 默认生成 GUI 启动器（javaw），从 cmd/PowerShell 运行时 `--help`、日志、错误全部丢失 | 除图形版外单独产出 `--win-console` 版本（`IconMixCLI.exe`）供命令行使用；两者共用同一 `Main` 类 |
+| T-29 | **GUI 启动失败会静默退出**：`SwingUtilities.invokeLater` 是异步的，`main` 返回后若 EDT 还没建起窗口（无交互桌面），JVM 以退出码 0 静默结束，用户只看到「双击没反应」 | 改用 `invokeAndWait` 同步等待，并在窗口创建后校验 `isVisible()`；失败时向 stderr 输出原因并 `System.exit(1)` |
+| T-30 | **`edit` 工具保存会去掉 UTF-8 BOM**，导致注释/输出含中文的 `.ps1` 被 PS 5.1 按 GBK 解析而语法崩溃（本轮 `pack.ps1` 实际踩到，报「意外的标记」） | 构建类脚本一律**纯 ASCII**（英文输出），从根上避开编码问题；确实需要中文的脚本每次编辑后必须补 BOM |
 
 ### 12.2 环境探测结论
 
@@ -818,3 +846,4 @@ java -cp out iconmix.Main
 | v1.6 | **修复「同一份素材在不同排布偏好下图标数量不同」的渲染缺陷**（用户以真实文件夹 `forGame` / `assisting_kit` 复现）：①画布边长只按列数计算，列优先（行数 &gt; 列数）时最后一行被画到画布外而整行消失（T-19）；②末行居中的缩进与索引反查脱节、半格缩进被 `ceil` 成整格，导致部分格子点不到、拖拽错位（T-20）。修复后 `forGame` 6→8 个图标全部入画（3×3，末行居中），两种排布数量一致。③补充全文件路径扫描作为快捷方式候选兜底，`assisting_kit` 由 1 → 2 个图标，开始菜单取图标 **92 → 108**（T-21）。新增 FR-4.5.1.1~4.5.1.2；网格回归用例覆盖 n=1..36 × 两种排布（共 25 项全通过） |
 | v1.7 | **修复两处遗漏**（用户第二轮实测反馈）：①`完美世界竞技平台.lnk` 取不到图标——候选串是零填充造成的**粘连路径**（`D:\a\b.D:\a\b\程序.exe`），且 UTF-16LE 扫描把中文当噪声啃成 `??????`。新增粘连串按盘符拆分（T-23）与 UTF-16LE 分段修正（T-24），`forGame` 恢复为 **7 个图标**（7 个 app 全部到位）。②`assisting_kit` 切「列优先」无效——`recomputeGrid` 对 2 个图标强制横排，覆盖了用户偏好（T-22）；改为偏好优先，2 图标时列优先输出 1 列 2 行 |
 | v1.8 | **新增空占位补齐与空位换位**（用户需求）：网格不足处用**透明空占位**补齐（7 个图标 → 3×3 补 2 个），空位在导出图片/ICO 中完全透明、不可作为拖拽源、但可作为拖拽目标（图标搬入空位，空位落到原处）。为实现该语义把数据模型从「压缩数组 + 按位置重编号」重建为**槽位权威模型**（T-25），顺带去掉「末行居中」这一映射脱节来源。新增 FR-4.5.9~4.5.11、FR-4.6.11~4.6.13 与 T-25 / T-26；验收扩至 **37 项全通过** |
+| v1.9 | **新增分发形态（打包成独立应用）**：因本机无 Maven/Gradle 且不能联网，采用 JDK 自带的 `jpackage` + `jlink`，产出图形版与命令行版两个 app-image（各约 74 MB，自带裁剪 JRE，目标机无需装 JDK），并提供一键脚本 `pack.ps1` 与生成式应用图标 `assets/icon.ico`。新增 6.6 节与 T-27~T-30，其中包含运行期模块裁剪、GUI/CLI 双启动器、GUI 启动失败静默退出、构建脚本编码四个实测坑。同步加固 `Main` 的 GUI 启动路径（改用 `invokeAndWait`，失败时非 0 退出） |

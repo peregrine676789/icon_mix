@@ -62,18 +62,44 @@ public final class Main {
         } catch (Exception ignored) {
             // 用默认外观即可
         }
-        SwingUtilities.invokeLater(new Runnable() {
-            @Override
-            public void run() {
+
+        // 用 invokeAndWait 而不是 invokeLater：后者是异步的，main 返回后若 EDT 还没把窗口
+        // 建起来（例如没有交互式桌面），JVM 会以 0 静默退出——用户只看到「双击没反应」。
+        // 改成同步等待，启动失败就能拿到异常并给出明确退出码与提示。
+        final Throwable[] failure = new Throwable[1];
+        try {
+            SwingUtilities.invokeAndWait(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        MainWindow window = new MainWindow();
+                        window.setVisible(true);
+                        if (!window.isVisible()) {
+                            throw new IllegalStateException("窗口创建后仍不可见");
+                        }
+                    } catch (Throwable t) {
+                        failure[0] = t;
+                    }
+                }
+            });
+        } catch (Throwable t) {
+            failure[0] = t;
+        }
+        if (failure[0] != null) {
+            Throwable t = failure[0];
+            System.err.println("[错误] 界面启动失败：" + t);
+            if (!GraphicsEnvironment.isHeadless()) {
                 try {
-                    new MainWindow().setVisible(true);
-                } catch (Throwable t) {
-                    t.printStackTrace();
                     JOptionPane.showMessageDialog(null,
-                            "界面启动失败：" + t, "IconMix", JOptionPane.ERROR_MESSAGE);
+                            "界面启动失败：\n" + t
+                                    + "\n\n若系统无图形界面，请改用命令行模式：\nIconMix <文件夹路径>",
+                            "IconMix", JOptionPane.ERROR_MESSAGE);
+                } catch (Throwable ignored) {
+                    // 连弹窗都失败，只能靠 stderr 与退出码
                 }
             }
-        });
+            System.exit(1);
+        }
     }
 
     /**

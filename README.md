@@ -109,9 +109,20 @@ src/main/java/iconmix/
     ├── PngVerify.java           PNG 结构校验器
     ├── NativeTools.java         attrib / SHChangeNotify
     └── Log.java                 日志收集
-verify/                          验收脚本（不属于主源码树）
-├── Harness.java                 24 项结构与行为验收
-└── GuiSmoke.java                GUI 离屏渲染冒烟测试
+verify/                          验收与诊断脚本（不属于主源码树）
+├── Harness.java                 37 项结构与行为验收（主验收）
+├── SlotProbe.java               槽位模型与空位交换隔离测试
+├── GuiSmoke.java                GUI 离屏渲染冒烟测试
+├── DiagTask.java                单目录端到端诊断（逐槽位报告）
+├── DiagAlpha.java               空占位透明度校验
+├── DiagLnk.java / DiagOne.java  快捷方式解析诊断
+└── DiagFile.java / DiagScan.java 单文件 / 目录结构诊断
+tools/
+└── MakeAppIcon.java             生成打包用应用图标（assets/icon.ico）
+assets/
+├── icon.ico                     应用图标（多尺寸，jpackage 使用）
+└── icon.png                     同一图标预览图
+pack.ps1                         一键打包脚本（编译 → jar → jpackage）
 ```
 
 ## 四、自检
@@ -124,12 +135,53 @@ javac -encoding UTF-8 -d out (Get-ChildItem -Recurse -Filter *.java -Path src\ma
 javac -encoding UTF-8 -cp out -d out-test verify\Harness.java
 java '-Djava.awt.headless=true' -cp "out;out-test" Harness "D:\tmp\forGame"
 
+# 槽位模型隔离测试（补位 / 空位交换）
+javac -encoding UTF-8 -cp out -d out-test verify\SlotProbe.java
+java '-Djava.awt.headless=true' -cp "out;out-test" SlotProbe
+
 # GUI 冒烟（离屏渲染成 PNG，不需要人工看窗口）
 javac -encoding UTF-8 -cp out -d out-test verify\GuiSmoke.java
 java -cp "out;out-test" GuiSmoke "D:\tmp\forGame" gui-smoke.png
 ```
 
-## 五、环境要求
+## 五、打包成独立应用（免安装）
+
+本机**没有** Maven/Gradle，也不能联网，所以打包只用 JDK 自带的 `jpackage` / `jlink`——
+不引入任何构建工具，产物自带裁剪过的 JRE，目标机器**不需要装 JDK**。
+
+```powershell
+# 一键打包（编译 → 生成图标 → jar → jpackage）
+powershell -NoProfile -ExecutionPolicy Bypass -File .\pack.ps1
+
+# 只清理产物
+.\pack.ps1 -Clean
+
+# 顺便生成 .exe 安装包（需要 WiX Toolset v3，本机未装则跳过）
+.\pack.ps1 -Installer
+```
+
+产物在 `dist\`：
+
+| 产物 | 说明 | 体积 |
+|---|---|---|
+| `dist\IconMix\IconMix.exe` | 图形版，双击启动，无控制台窗口 | 约 74 MB |
+| `dist\IconMixCLI\IconMixCLI.exe` | 命令行版，带控制台，能看输出 | 约 74 MB |
+
+`dist\IconMix` 整个目录可压缩后分发，对方解压即用。
+
+### 打包相关的技术要点
+
+- **运行时模块裁剪**：jpackage 默认会塞入 `jdk.jshell`、`jdk.jconsole`、`java.sql` 等无关模块（约 123 MB）。
+  本程序只用 Swing/AWT + 基础库，脚本里用 `--add-modules java.base,java.desktop` 限定后降到约 74 MB；
+  传递依赖由 jlink 自动补齐。日后若引入 `java.logging`、`java.net.http` 等能力，需要在 `pack.ps1` 里补上对应模块。
+- **为什么会有两个 exe**：图形版用无控制台启动器（双击不弹黑框），但那样从命令行运行时看不到任何输出；
+  控制台版专供命令行/脚本使用。`iconmix.Main` 本身是同一个类，按有无参数分流。
+- **应用图标**由 `tools/MakeAppIcon.java` 用项目自己的 ICO 编码器生成（`assets/icon.ico`），
+  图形为「3×3 宫格 + 2 个虚线空位」，与产品语义一致。
+- **`pack.ps1` 保持纯 ASCII**：PowerShell 5.1 按 ANSI 读取无 BOM 的 UTF-8 文件，中文会变乱码并导致语法错误
+  （见需求说明书 T-1）。脚本因此只用英文输出，编辑后无需再补 BOM。
+
+## 六、环境要求
 
 - Windows 10 / 11 x64
 - JDK 8+（实测 JDK 26）

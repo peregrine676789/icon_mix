@@ -3,6 +3,8 @@ out/
 out-test/
 build/
 classes/
+dist/
+dist-slim/
 *.class
 *.jar
 
@@ -16,3 +18,7 @@ sources.txt
 .idea/shelf/
 .idea/httpRequests/
 *.iml.bak
+
+# 打包机可能遗留的产物
+*.msi
+IconMix-*.exe
